@@ -497,7 +497,8 @@ const modelSpec = {
     "vision_capability": true,
     "supports_thinking": true,
     "supports_structured_output": true,
-    "reasoning_effort": [["disabled", "enabled"], "enabled"]
+    "reasoning_effort": [["disabled", "enabled"], "enabled"],
+    "native_multiturn_reasoning": true
   },
   // North Mini Code (Cohere's first agentic-coding model; MoE 30B total / 3B
   // active, Apache 2.0). Reasoning-native and verified to handle the native
@@ -1031,7 +1032,14 @@ const modelSpec = {
   "grok-tts": {
     "tts_capability": true,
     "tts_family": "xai",
-    "tts_instructions_capability": false
+    "tts_instructions_capability": false,
+    // Authoritative built-in voice roster from xAI GET /v1/tts/voices
+    // (all natively multilingual). `eve` is the xAI default. Keep in sync
+    // with the grok-tts-voice options in views/index.erb.
+    "tts_voices": ["altair", "ara", "atlas", "carina", "castor", "celeste",
+      "cosmo", "eve", "helios", "helix", "iris", "kepler", "leo", "lumen",
+      "luna", "lux", "naksh", "orion", "perseus", "rex", "rigel", "sal",
+      "sirius", "ursa", "zagan", "zenith"]
   },
   "gemini-3.1-flash-tts-preview": {
     "tts_capability": true,

@@ -287,7 +287,7 @@
     <!-- Responsive Navbar -->
     <nav id="main-nav" class="navbar fixed-top shaded-y">
       <div class="container-fluid d-flex align-items-center px-3 navbar-container">
-        <a href="#" class="navbar-brand d-flex align-items-center reset-area">
+        <a href="#" class="navbar-brand d-flex align-items-center reset-area" role="button" aria-label="Reset this chat (keeps the current app)" title="Reset this chat (keeps the current app)" data-i18n-title="ui.session.resetHint">
           <img src="img/monadic-logo.svg" alt="Logo" class="nav-logo">
           <span class="nav-text"><span class="text-main">Monadic</span><span class="text-highlight"> Chat</span></span>
         </a>
@@ -487,7 +487,7 @@
             <div id="context-panel-body" class="collapse show px-3 pb-3">
             <div class="text-muted small mb-2 d-flex align-items-center gap-2" id="context-legend" style="display: none;">
               <span data-i18n="ui.contextTurnLegend">T = Turn</span>
-              <span class="badge bg-secondary" id="context-turn-badge" title="Total turns">0</span>
+              <span class="mc-badge mc-badge--grey" id="context-turn-badge" title="Total turns">0</span>
             </div>
             <div id="context-sections">
               <!-- Context sections will be dynamically populated -->
@@ -587,7 +587,7 @@
                 <option id="webspeech-provider-option" value="webspeech" selected>Web Speech API</option>
               </select>
               <div id="expressive-speech-indicator" class="mt-2" style="display: none;">
-                <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
+                <span class="mc-badge mc-badge--grey"
                       role="status"
                       data-i18n-title="ui.expressiveSpeechTooltip"
                       title="The selected TTS engine interprets speech markers that the assistant weaves into its replies.">
@@ -675,11 +675,43 @@
             <div id="grok-voices" class="my-1" style="display: none;">
               <label for="grok-tts-voice" class="div-label my-2">Grok Text-to-Speech Voice</label>
               <select class="form-select form-select-sm" id="grok-tts-voice">
-                <option value="eve">Eve (Energetic)</option>
-                <option value="ara">Ara (Warm)</option>
-                <option value="rex">Rex (Confident)</option>
-                <option value="sal">Sal (Smooth)</option>
-                <option value="leo">Leo (Authoritative)</option>
+                <!--
+                  xAI flagship voices (grok-tts). All voices are natively
+                  multilingual; grouped by the gender reported by the
+                  authoritative GET /v1/tts/voices roster. `eve` is the xAI
+                  default. Keep this list in sync with model_spec.js
+                  `grok-tts` → `tts_voices` (a Jest drift guard enforces it).
+                -->
+                <optgroup label="Female">
+                  <option value="ara">Ara</option>
+                  <option value="carina">Carina</option>
+                  <option value="celeste">Celeste</option>
+                  <option value="eve" selected>Eve</option>
+                  <option value="iris">Iris</option>
+                  <option value="luna">Luna</option>
+                  <option value="ursa">Ursa</option>
+                </optgroup>
+                <optgroup label="Male">
+                  <option value="altair">Altair</option>
+                  <option value="atlas">Atlas</option>
+                  <option value="castor">Castor</option>
+                  <option value="cosmo">Cosmo</option>
+                  <option value="helios">Helios</option>
+                  <option value="helix">Helix</option>
+                  <option value="kepler">Kepler</option>
+                  <option value="leo">Leo</option>
+                  <option value="lumen">Lumen</option>
+                  <option value="lux">Lux</option>
+                  <option value="naksh">Naksh</option>
+                  <option value="orion">Orion</option>
+                  <option value="perseus">Perseus</option>
+                  <option value="rex">Rex</option>
+                  <option value="rigel">Rigel</option>
+                  <option value="sal">Sal</option>
+                  <option value="sirius">Sirius</option>
+                  <option value="zagan">Zagan</option>
+                  <option value="zenith">Zenith</option>
+                </optgroup>
               </select>
             </div>
 
@@ -708,10 +740,15 @@
         <div id="main" class="col-md-8 order-md-1 scrollable">
           <div id="config-wrapper">
           <!-- Config Summary Bar: persistent header that mirrors current settings.
-               Click to toggle Box A (#config-body) collapse. aria-expanded must
-               match #config-body's initial .show state for the chevron rotation
-               CSS to render correctly on first paint. -->
-          <div id="config-summary" class="rounded p-2 px-3 shaded-panel mb-2" style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#config-body" aria-expanded="true" aria-controls="config-body">
+               Click to toggle Box A (#config-body) collapse — but only during a
+               session: before one starts the settings ARE the screen, so
+               collapsing them would leave a bare header with nothing to reveal.
+               The bar starts locked (.config-summary-locked, no data-bs-toggle,
+               chevron hidden); enterConversationMode() unlocks it and
+               enterSettingsMode() re-locks it. aria-expanded must match
+               #config-body's initial .show state for the chevron rotation CSS
+               to render correctly on first paint. -->
+          <div id="config-summary" class="rounded p-2 px-3 shaded-panel mb-2 config-summary-locked" data-bs-target="#config-body" aria-expanded="true" aria-controls="config-body">
             <div class="d-flex align-items-center">
               <span id="summary-app-icon" class="me-2"></span>
               <span id="summary-app-name" class="fw-semibold me-2"></span>

@@ -26,7 +26,7 @@
 
 ##### Q: What is Gemini TTS and how does it differ from other providers? :id=gemini-tts-overview
 
-**A**: Gemini TTS is Google's text-to-speech service using Gemini 2.5 Flash and Pro models with 30 unique voices and support for 24 languages. It requires a Gemini API key and supports both real-time streaming for interactive conversations and audio file generation through the Speech Draft Helper app (outputs LINEAR16 PCM audio at 24kHz).
+**A**: Gemini TTS is Google's text-to-speech service using Gemini's Flash and Pro TTS models with 30 unique voices and support for 24 languages. It requires a Gemini API key and supports both real-time streaming for interactive conversations and audio file generation through the Speech Draft Helper app (outputs LINEAR16 PCM audio at 24kHz).
 
 ---
 
@@ -49,6 +49,9 @@
 - **OpenAI models**: Multiple models with varying accuracy and features. Advanced models support speaker identification (diarization) for multi-person audio.
 - **Google Gemini**: Provides advanced audio understanding with flexible language recognition and multilingual support.
 - **ElevenLabs Scribe**: High-accuracy speech recognition with word-level timestamps. Requires an ElevenLabs API key.
+- **Cohere**: Speech recognition with the Cohere Transcribe model. Requires a Cohere API key.
+- **Mistral Voxtral**: Speech recognition with Mistral's Voxtral Transcribe model. Requires a Mistral API key.
+- **xAI**: Speech recognition powered by xAI. Requires an xAI API key.
 
 You can select your preferred model in the **Speech Settings** panel under the **Speech-to-Text Model** dropdown. Available models are automatically enabled based on your configured API keys. Your selection is saved in your browser and persists across sessions.
 

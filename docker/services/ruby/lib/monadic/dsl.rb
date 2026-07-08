@@ -271,15 +271,36 @@ module MonadicDSL
   end
 
   def self.merge_tools_for_provider(provider, existing, additions)
-    return additions if existing.nil? || (existing.respond_to?(:empty?) && existing.empty?)
+    return dedup_tools_by_name(additions) if existing.nil? || (existing.respond_to?(:empty?) && existing.empty?)
     if provider == :gemini
       existing_arr = (existing.is_a?(Hash) ? (existing['function_declarations'] || []) : []).dup
       additions_arr = (additions.is_a?(Hash) ? (additions['function_declarations'] || []) : []).dup
-      { 'function_declarations' => existing_arr + additions_arr }
+      { 'function_declarations' => dedup_tools_by_name(existing_arr + additions_arr) }
     elsif existing.is_a?(Array) && additions.is_a?(Array)
-      existing + additions
+      dedup_tools_by_name(existing + additions)
     else
       existing
+    end
+  end
+
+  # Drop duplicate tools by function name. Each auto-injection ToolConfiguration
+  # re-adds request_tool (via ensure_request_tool_defined), so concatenating tool
+  # arrays across passes yields duplicate request_tool entries; some providers
+  # reject duplicate function names. Keeps the first occurrence.
+  def self.dedup_tools_by_name(tools)
+    return tools unless tools.is_a?(Array)
+    seen = {}
+    tools.each_with_object([]) do |tool, result|
+      name = if tool.is_a?(Hash)
+        fn = tool[:function] || tool['function']
+        (fn && (fn[:name] || fn['name'])) || tool[:name] || tool['name']
+      end
+      if name.nil?
+        result << tool
+      elsif !seen[name]
+        seen[name] = true
+        result << tool
+      end
     end
   end
 
@@ -551,6 +572,18 @@ module MonadicDSL
       @tool_config ||= ToolConfiguration.new(@state, provider)
 
       @tool_config.import_shared_tools(*groups, **options)
+
+      @state.settings[:tools] = @tool_config.to_h
+    end
+
+    # App-level sugar for declaring reachable (conditional) skill groups outside a
+    # tools {} block. Delegates to ToolConfiguration#reachable_skills; `:safe`
+    # expands to the read-only Registry.safe_groups pool.
+    def reachable_skills(*groups, **options)
+      provider = @state.settings[:provider].to_s.downcase.to_sym
+      @tool_config ||= ToolConfiguration.new(@state, provider)
+
+      @tool_config.reachable_skills(*groups, **options)
 
       @state.settings[:tools] = @tool_config.to_h
     end

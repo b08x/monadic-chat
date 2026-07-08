@@ -1000,7 +1000,14 @@ function resetParams() {
     });
 
     const pdfPanel = $id("pdf-panel");
-    $toggle(pdfPanel, (toBool(params["pdf"]) || toBool(params["pdf_vector_storage"])));
+    const pdfVisible = (toBool(params["pdf"]) || toBool(params["pdf_vector_storage"]));
+    $toggle(pdfPanel, pdfVisible);
+    // The list was cleared at the top of resetParams; re-fetch so the panel
+    // shows the current PDFs (or the "No PDFs imported" empty state) instead of
+    // a bare blank region until the user manually refreshes.
+    if (pdfVisible && window.ws && typeof window.sendPdfWsMessage === "function") {
+      window.sendPdfWsMessage({ message: "PDF_TITLES" });
+    }
     const audioUpload = $id("audio-upload");
     $toggle(audioUpload, toBool(params["audio_upload"]));
     // Reset the flag after loading is complete
@@ -1026,6 +1033,17 @@ function setParams() {
 
   const mathEl = $id("math");
   params["math"] = mathEl ? mathEl.checked : false;
+
+  // Knowledge Base (RAG) session toggle. It must round-trip through the submit
+  // so the backend reflects the visible toggle: RESET clears session[:parameters]
+  // and the WS LIBRARY_RAG_TOGGLE message only fires on an explicit user toggle,
+  // so a session that merely SHOWS the toggle ON (after reset/import/launch)
+  // would otherwise leave the backend unset and library_search disabled. Only
+  // emit it for apps that expose the toggle (element absent for non-KB apps).
+  const libRagEl = $id("library-rag-toggle");
+  if (libRagEl) {
+    params["library_rag_enabled"] = libRagEl.checked;
+  }
 
   // Privacy Filter session toggle lives on the backend only — see
   // ws-privacy-handler.js. Putting it in params would shadow the

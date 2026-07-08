@@ -25,6 +25,9 @@
 - **OpenAIモデル**: 精度と機能が異なる複数のモデル。高度なモデルは複数人の音声における話者識別（ダイアライゼーション）をサポートします。
 - **Google Gemini**: 柔軟な言語認識と多言語サポートによる高度な音声理解を提供します。
 - **ElevenLabs Scribe**: 単語レベルのタイムスタンプを備えた高精度の音声認識。ElevenLabs APIキーが必要です。
+- **Cohere**: Cohere Transcribeモデルによる音声認識。Cohere APIキーが必要です。
+- **Mistral Voxtral**: MistralのVoxtral Transcribeモデルによる音声認識。Mistral APIキーが必要です。
+- **xAI**: xAIによる音声認識。xAI APIキーが必要です。
 
 **音声設定**パネルの**音声認識モデル**ドロップダウンで希望のモデルを選択できます。利用可能なモデルは設定されたAPIキーに基づいて自動的に有効化されます。選択内容はブラウザに保存され、セッションをまたいで保持されます。
 
@@ -38,7 +41,7 @@
 
 ##### Q: Gemini TTSとは何ですか？他のプロバイダーとの違いは？ :id=gemini-tts-overview
 
-**A**: Gemini TTSはGoogleのテキスト読み上げサービスで、Gemini 2.5 FlashおよびProモデルを使用し、30種類のユニークな音声と24言語をサポートしています。Gemini APIキーが必要で、対話型会話用のリアルタイムストリーミングとSpeech Draft Helperアプリを通じたオーディオファイル生成（24kHz LINEAR16 PCM形式）の両方をサポートしています。
+**A**: Gemini TTSはGoogleのテキスト読み上げサービスで、GeminiのFlashおよびPro TTSモデルを使用し、30種類のユニークな音声と24言語をサポートしています。Gemini APIキーが必要で、対話型会話用のリアルタイムストリーミングとSpeech Draft Helperアプリを通じたオーディオファイル生成（24kHz LINEAR16 PCM形式）の両方をサポートしています。
 
 ---
 

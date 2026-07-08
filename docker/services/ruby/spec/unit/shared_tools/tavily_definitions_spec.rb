@@ -2,8 +2,37 @@
 
 require 'spec_helper'
 require_relative '../../../lib/monadic/shared_tools/tavily_definitions'
+require_relative '../../../lib/monadic/shared_tools/registry'
 
 RSpec.describe Monadic::SharedTools::TavilyDefinitions do
+  # WEB_SEARCH_TOOL_NAMES drives the consumption-point gate (web_search_tool?)
+  # that blocks web search when the toggle is off. The exposure-point gate
+  # (ProgressiveToolManager) derives the group from the Registry, so if a tool
+  # is added to the web_search_tools group but not here, the two gates drift and
+  # the new tool escapes the toggle. Lock them together.
+  it 'WEB_SEARCH_TOOL_NAMES matches the web_search_tools Registry group (no drift)' do
+    registry_names = MonadicSharedTools::Registry.tools_for(:web_search_tools).map { |t| t[:name] }
+    expect(described_class::WEB_SEARCH_TOOL_NAMES.sort).to eq(registry_names.sort)
+  end
+
+  describe '.web_search_tool?' do
+    it 'recognizes every web-search tool name (schema + Tavily primitives)' do
+      %w[search_web fetch_web_content tavily_search tavily_fetch].each do |name|
+        expect(described_class.web_search_tool?(name)).to be(true), "expected #{name} to be a web-search tool"
+      end
+    end
+
+    it 'accepts symbols as well as strings' do
+      expect(described_class.web_search_tool?(:tavily_search)).to be(true)
+    end
+
+    it 'returns false for unrelated tools' do
+      %w[read_file_from_shared_folder run_code request_tool library_search].each do |name|
+        expect(described_class.web_search_tool?(name)).to be(false)
+      end
+    end
+  end
+
   describe 'TOOLS' do
     let(:tools) { described_class::TOOLS }
 

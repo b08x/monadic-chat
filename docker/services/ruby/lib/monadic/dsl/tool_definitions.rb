@@ -202,15 +202,23 @@ module MonadicDSL
         formatted
       end
 
+      # Merge (union), do NOT overwrite. to_h can run several times against the
+      # same settings: once for the app's own `tools do` block and again for each
+      # auto-injected group (library_search, file_operations), each via its own
+      # ToolConfiguration. Overwriting here would drop the app's own conditional
+      # tools from the PTD metadata whenever a later injection runs, silently
+      # un-hiding them. Union keeps this idempotent for repeated calls on the same
+      # config and cumulative across configs.
       if @tools.any?
-        @state.settings[:progressive_tools] ||= {}
-        @state.settings[:progressive_tools][:provider] = @provider
-        @state.settings[:progressive_tools][:all_tool_names] = @tools.map(&:name)
-        @state.settings[:progressive_tools][:always_visible] = @tools.select { |t| t.visibility == :always }.map(&:name)
+        pt = (@state.settings[:progressive_tools] ||= {})
+        pt[:provider] = @provider
+        pt[:all_tool_names] = Array(pt[:all_tool_names]) | @tools.map(&:name)
+        pt[:always_visible] = Array(pt[:always_visible]) | @tools.select { |t| t.visibility == :always }.map(&:name)
       end
 
       if conditional_metadata.any?
-        @state.settings[:progressive_tools][:conditional] = conditional_metadata
+        pt = (@state.settings[:progressive_tools] ||= {})
+        pt[:conditional] = (Array(pt[:conditional]) + conditional_metadata).uniq { |c| c[:name] }
       end
 
       wrapper = PROVIDER_WRAPPERS[@provider] || PROVIDER_WRAPPERS[:default]
@@ -300,6 +308,26 @@ module MonadicDSL
         # Ensure request_tool is defined if any conditional tools exist
         ensure_request_tool_defined if visibility == "conditional"
       end
+    end
+
+    # Sugar: declare skill groups the app can reach for mid-conversation. They are
+    # imported as `conditional` (hidden until the model unlocks them via the
+    # request_tool skill menu), so the app starts lean and expands on demand.
+    # Pass `:safe` to include every read-only group in Registry.safe_groups.
+    #
+    # @example
+    #   tools do
+    #     reachable_skills :web_search_tools, :image_analysis
+    #   end
+    # @example open the whole read-only safe pool
+    #   tools do
+    #     reachable_skills :safe
+    #   end
+    def reachable_skills(*groups, **options)
+      expanded = groups.flat_map do |group|
+        group.to_sym == :safe ? MonadicSharedTools::Registry.safe_groups : [group]
+      end.uniq
+      import_shared_tools(*expanded, visibility: "conditional", **options)
     end
 
     private

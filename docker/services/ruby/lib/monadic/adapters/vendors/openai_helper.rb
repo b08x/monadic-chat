@@ -343,7 +343,11 @@ module OpenAIHelper
   private def resolve_openai_model_capabilities(model, obj, use_responses_api, &block)
     reasoning_model = Monadic::Utils::ModelSpec.model_has_property?(model, "reasoning_effort")
     non_stream_model = (Monadic::Utils::ModelSpec.get_model_property(model, "supports_streaming") == false)
-    tool_capability = Monadic::Utils::ModelSpec.get_model_property(model, "tool_capability") == true
+    # Use the canonical SSOT accessor so an absent `tool_capability` flag
+    # defaults to tool-capable (`!= false`), matching every other provider
+    # helper and ModelSpec.tool_capability?. The prior `== true` here treated
+    # unknown models as non-tool, diverging from the rest of the stack.
+    tool_capability = Monadic::Utils::ModelSpec.tool_capability?(model)
     non_tool_model = !tool_capability
     supports_websearch = Monadic::Utils::ModelSpec.supports_web_search?(model)
 
@@ -454,6 +458,17 @@ module OpenAIHelper
         )
       rescue StandardError => e
         DebugHelper.debug("OpenAI: Progressive tool filtering skipped due to #{e.message}", category: :api, level: :warning) if defined?(DebugHelper)
+      end
+
+      begin
+        app_tools = Monadic::Utils::ProgressiveToolManager.annotate_request_tool(
+          tools: app_tools,
+          app_settings: APPS[app].settings,
+          session: session,
+          app_name: app
+        )
+      rescue StandardError => e
+        DebugHelper.debug("OpenAI: Skill menu annotation skipped due to #{e.message}", category: :api, level: :warning) if defined?(DebugHelper)
       end
     end
 
@@ -1923,6 +1938,15 @@ module OpenAIHelper
 
     skip_function_execution = false
     function_return = nil
+
+    # request_tool has no Ruby method: it is the progressive-disclosure meta-tool.
+    # Unlock the requested skill so its tools become visible on the next round.
+    if function_name == "request_tool"
+      function_return = Monadic::Utils::ProgressiveToolManager.handle_request_tool(
+        session: session, app_name: app, app_settings: (APPS[app]&.settings || {}), argument_hash: argument_hash
+      )
+      skip_function_execution = true
+    end
 
     if function_name == "find_help_topics" && app.to_s == "MonadicHelpOpenAI"
       obj["help_topics_call_count"] = obj["help_topics_call_count"].to_i + 1

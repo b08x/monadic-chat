@@ -860,6 +860,20 @@ module MistralHelper
       merged = merged.flatten.compact.select { |tool| tool.is_a?(Hash) }
       merged.uniq! { |tool| tool.dig(:function, :name) || tool.dig("function", "name") }
 
+      # obj["tools"] (request_tools) is merged unfiltered above, which can
+      # reintroduce PTD-hidden conditional tools. Re-apply visibility by name to
+      # the assembled list, then annotate request_tool with the skill menu.
+      begin
+        merged = Monadic::Utils::ProgressiveToolManager.visible_tools(
+          app_name: app, session: session, app_settings: app_settings, default_tools: merged
+        )
+        merged = Monadic::Utils::ProgressiveToolManager.annotate_request_tool(
+          tools: merged, app_settings: app_settings, session: session, app_name: app
+        )
+      rescue StandardError => e
+        DebugHelper.debug("Mistral: skill visibility re-apply skipped due to #{e.message}", category: :api, level: :warning)
+      end
+
       if merged.empty?
         DebugHelper.debug("Mistral progressive tools: none unlocked", category: :api, level: :debug)
       else
@@ -969,6 +983,13 @@ module MistralHelper
   # Returns true on success, or an Array (error response) for the orchestrator to propagate.
   def build_mistral_messages(body, context, obj, session, role, &block)
     system_message_modified = false
+    # Defensive: `context` comes from session[:messages], which only ever holds
+    # user/assistant/system turns — tool results live in obj["function_returns"]
+    # and are appended fresh for the current round below (role == "tool"). This
+    # reject is therefore a no-op in normal flow; it is kept only to guard
+    # against an imported/edge session that carries an orphaned tool message
+    # (Mistral rejects a role:"tool" not paired with a preceding assistant
+    # tool_calls turn). It does NOT drop live tool results.
     body["messages"] = context.reject do |msg|
                          msg["role"] == "tool"
                        end.map do |msg|
@@ -1115,7 +1136,11 @@ module MistralHelper
 
     # Call the function
     begin
-      function_return = if args_hash.empty?
+      function_return = if function_name == "request_tool"
+                          Monadic::Utils::ProgressiveToolManager.handle_request_tool(
+                            session: session, app_name: app, app_settings: (APPS[app]&.settings || {}), argument_hash: args_hash
+                          )
+                        elsif args_hash.empty?
                           APPS[app].send(function_name.to_sym)
                         else
                           APPS[app].send(function_name.to_sym, **args_hash)
@@ -1207,10 +1232,18 @@ module MistralHelper
 
     Monadic::Utils::ExtraLogger.log { "[Mistral] content_buffer length: #{content_buffer.length}\n[Mistral] content_buffer first 500 chars: #{content_buffer[0..500]}\n[Mistral] content_buffer last 500 chars: #{content_buffer[-500..-1]}" }
 
-    # Prepend any saved pre-tool content from earlier in the conversation
+    # Fall back to pre-tool content ONLY when the post-tool answer is empty.
+    #
+    # Mistral often "thinks out loud" before calling a tool, emitting a
+    # training-data guess ("The latest Ruby is 3.4.1, let me check..."). The
+    # old code unconditionally prepended that text to the final answer, so a
+    # tool-grounded result (e.g. 4.0.5 from a fresh search) got glued behind a
+    # stale guess — the relay-fidelity leak. Keep the pre-tool text only as a
+    # fallback for the rare case where the model produced no post-tool answer,
+    # and always clear it so it never bleeds into a later turn.
     pre_tool_content = session[:mistral_pre_tool_content]
-    if pre_tool_content && pre_tool_content.is_a?(String) && !pre_tool_content.strip.empty?
-      content_buffer = pre_tool_content + "\n\n" + content_buffer.to_s
+    if pre_tool_content.is_a?(String) && !pre_tool_content.strip.empty?
+      content_buffer = pre_tool_content if content_buffer.to_s.strip.empty?
       session.delete(:mistral_pre_tool_content)
     end
 

@@ -80,6 +80,7 @@ let isQuitting = false;
 let contextMenu = null;
 let initialLaunch = true;
 let lastUpdateCheckResult = null; // Store the last update check result
+let lastKnownLatestVersion = null; // Latest version from the most recent check (for the inline download button)
 // Preference for browser launch: 'external' or 'internal'
 // Default browser mode: 'internal' for internal Electron view
 let browserMode = 'internal';
@@ -1052,6 +1053,7 @@ function checkForUpdatesManual(showDialog = false) {
 
       if (match && match[1]) {
         const latestVersion = match[1];
+        lastKnownLatestVersion = latestVersion;
         const currentVersion = app.getVersion();
 
         if (compareVersions(latestVersion, currentVersion) > 0) {
@@ -1525,20 +1527,27 @@ function initializeApp() {
     ipcMain.on('command', async (_event, command) => {
       try {
         switch (command) {
-          case 'start':
-            // Check requirements first
+          case 'start': {
+            // Immediate feedback: checkRequirements() below is async and can
+            // take a few seconds; without this the button click looks ignored.
+            // Show 'Starting' now, and revert to the prior status if we abort
+            // before runCommand (which sets its own 'Starting') takes over.
+            const prevStatus = currentStatus;
+            updateStatusIndicator('Starting');
             dockerManager.checkRequirements()
               .then(() => promptForPendingRebuilds())
               .then((proceed) => {
-                if (!proceed) return;
+                if (!proceed) { updateStatusIndicator(prevStatus); return; }
                 dockerManager.runCommand('start', formatMessage(null, 'messages.monadicChatPreparing'), 'Starting', 'Running');
               })
               .catch((error) => {
+                updateStatusIndicator(prevStatus);
                 console.log(`Docker requirements check failed: ${error}`);
                 // Show error dialog for Docker issues
                 dialog.showErrorBox('Docker Error', error);
               });
             break;
+          }
           case 'stop':
             // Inform the embedded browser to suppress reconnect noise (show "Stopped")
             try {
@@ -3079,7 +3088,10 @@ function openSharedFolder() {
 
   shell.openPath(folderPath).then((result) => {
     if (result) {
+      // result is a non-empty error string when the OS could not open the
+      // folder — tell the user instead of failing silently.
       console.error('Error opening path:', result);
+      dialog.showErrorBox('Could not open folder', `${folderPath}\n\n${result}`);
     }
   });
 }
@@ -3106,7 +3118,10 @@ function openConfigFolder() {
 
   shell.openPath(folderPath).then((result) => {
     if (result) {
+      // result is a non-empty error string when the OS could not open the
+      // folder — tell the user instead of failing silently.
       console.error('Error opening path:', result);
+      dialog.showErrorBox('Could not open folder', `${folderPath}\n\n${result}`);
     }
   });
 }
@@ -3133,7 +3148,10 @@ function openLogFolder() {
 
   shell.openPath(folderPath).then((result) => {
     if (result) {
+      // result is a non-empty error string when the OS could not open the
+      // folder — tell the user instead of failing silently.
       console.error('Error opening path:', result);
+      dialog.showErrorBox('Could not open folder', `${folderPath}\n\n${result}`);
     }
   });
 }
@@ -3976,6 +3994,21 @@ ipcMain.on('check-for-updates-from-settings', () => {
   checkForUpdates();
 });
 
+// Inline "Download & Install" button: start the download directly. downloadUpdate()
+// re-checks electron-updater's state internally, so this is safe even though our
+// primary version check goes through raw.githubusercontent.com. Mirrors the
+// dialog's "Download & Install" branch (progress feedback + fallback dialog).
+ipcMain.on('start-update-download', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('command-output',
+      formatMessage('info', 'messages.downloadingUpdate', { version: lastKnownLatestVersion || '' }));
+  }
+  updater.downloadUpdate().catch((err) => {
+    console.error('downloadUpdate failed:', err);
+    // updater.js shows a fallback dialog linking to releases.
+  });
+});
+
 // Handle open-external-url request from settings window
 ipcMain.on('open-external-url', (_event, url) => {
   if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
@@ -4465,7 +4498,10 @@ ipcMain.handle('select-tts-dict', async () => {
                     delete envConfig.TTS_DICT_DATA;
                 }
                 
-                // Copy the file to the config directory
+                // Copy the file to the config directory. If the copy fails the
+                // dictionary is NOT installed, so report failure instead of
+                // returning the path (which made the settings field show the
+                // dictionary as installed on a silent copy error).
                 try {
                     const configDir = path.dirname(envPath);
                     const ttsDictFile = path.join(configDir, 'TTS_DICT.csv');
@@ -4473,11 +4509,12 @@ ipcMain.handle('select-tts-dict', async () => {
                     console.log(`TTS Dictionary copied to ${ttsDictFile}`);
                 } catch (error) {
                     console.error('Error copying TTS dictionary file:', error);
+                    return '';
                 }
-                
+
                 writeEnvFile(envPath, envConfig);
             }
-            
+
             return filePath;
         } catch (error) {
             console.error('Error reading TTS dictionary file:', error);
