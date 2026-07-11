@@ -788,6 +788,17 @@ document.addEventListener("DOMContentLoaded", function () {
     if (websearchCb && websearchCb.checked) indicators += '<span class="mc-badge mc-badge--blue me-1">Web Search</span>';
     var mathCb = $id("math");
     if (mathCb && mathCb.checked) indicators += '<span class="mc-badge mc-badge--grey me-1">Math</span>';
+    // Knowledge Base access indicator. Two distinct paths hit the Library:
+    //  - any app with the shared library_search tool, when the sidebar
+    //    "Use Knowledge Base for retrieval" toggle is ON (checked AND enabled
+    //    — a checked-but-disabled toggle means this app can't use it);
+    //  - the Knowledge Base app itself, which always has full DB access via
+    //    its own tools regardless of the toggle (the toggle is disabled there).
+    var kbToggle = $id("library-rag-toggle");
+    var isKbApp = !!(appsSelect && /^KnowledgeBase/.test(appsSelect.value || ""));
+    if (isKbApp || (kbToggle && kbToggle.checked && !kbToggle.disabled)) {
+      indicators += '<span class="mc-badge mc-badge--green me-1">Knowledge Base</span>';
+    }
     var reasoningEffortSel = $id("reasoning-effort");
     var re = reasoningEffortSel ? reasoningEffortSel.value : "";
     if (reasoningEffortSel && !reasoningEffortSel.disabled && re && re !== "none" && re !== "disabled") {
@@ -858,6 +869,40 @@ document.addEventListener("DOMContentLoaded", function () {
     if (mainPanelEl) { mainPanelEl.classList.add("d-none"); $hide(mainPanelEl); }
     unlockSessionSettings();
   }
+
+  // Keep the summary-bar chevron in sync with #config-body. The rotation CSS
+  // keys off #config-summary[aria-expanded], but Bootstrap only maintains
+  // aria-expanded on togglers that carried data-bs-toggle when the Collapse
+  // instance was FIRST created — and #config-summary gains data-bs-toggle only
+  // once a session starts (enterConversationMode), after the instance already
+  // exists with an empty trigger list. So Bootstrap never updates it and the
+  // chevron would stay frozen. Drive aria-expanded from the collapse events
+  // instead (guarding against bubbled events from nested collapses).
+  (function () {
+    var configBody = $id("config-body");
+    if (!configBody) return;
+    configBody.addEventListener("show.bs.collapse", function (e) {
+      if (e.target !== configBody) return;
+      var summary = $id("config-summary");
+      if (summary) summary.setAttribute("aria-expanded", "true");
+    });
+    // Refit the Workflow Viewer once the expand ANIMATION completes: the
+    // viewer's ResizeObserver fires at intermediate heights mid-animation and
+    // can fit the graph to a partially-expanded container (chart appears
+    // shrunken). shown.bs.collapse fires at the final size.
+    configBody.addEventListener("shown.bs.collapse", function (e) {
+      if (e.target !== configBody) return;
+      if (typeof window.WorkflowViewer !== "undefined" &&
+          typeof window.WorkflowViewer.refit === "function") {
+        window.WorkflowViewer.refit();
+      }
+    });
+    configBody.addEventListener("hide.bs.collapse", function (e) {
+      if (e.target !== configBody) return;
+      var summary = $id("config-summary");
+      if (summary) summary.setAttribute("aria-expanded", "false");
+    });
+  })();
 
   // Expose for use in other modules
   window.updateConfigSummary = updateConfigSummary;
@@ -2096,9 +2141,20 @@ document.addEventListener("DOMContentLoaded", function () {
         { const el = $id("max-tokens"); if (el) el.value = DEFAULT_MAX_OUTPUT_TOKENS; }
         { const el = $id("max-tokens-toggle"); if (el) { el.checked = false; el.disabled = false; $dispatch(el, "change"); } }
       }
-      // Show Thinking toggle: only for models with supports_thinking
-      if (modelSpec[selectedModel]["supports_thinking"]) {
+      // Show Thinking toggle: for any reasoning model (supports_thinking OR a
+      // declared reasoning_effort). reasoning_effort-only models (e.g. OpenAI
+      // gpt-5.x) also emit displayable reasoning, and the toggle pairs with
+      // thinking-effort-link.js: turning it ON while effort is "none" bumps
+      // the effort to the model's lowest thinking level.
+      if (isReasoningModel) {
         $show($id("thinking-display-container"));
+        // Keep the toggle coherent with the effective effort: when the model's
+        // effort is "none" (no reasoning will be produced), the toggle must not
+        // sit checked claiming otherwise. Runs on initial load and every model
+        // selection. See thinking-effort-link.js.
+        if (window.ThinkingEffortLink && typeof window.ThinkingEffortLink.syncShowThinkingToEffort === 'function') {
+          window.ThinkingEffortLink.syncShowThinkingToEffort();
+        }
       } else {
         $hide($id("thinking-display-container"));
       }

@@ -12,6 +12,34 @@
  * @param {string} title - Optional custom title (defaults to "Thinking Process")
  * @returns {string} - HTML string for the thinking block
  */
+// Cached markdown-it instance for thinking content. `html: false` keeps any
+// raw HTML in the model's trace escaped (XSS-safe); `breaks: true` because
+// reasoning traces use loose single newlines as paragraph-ish breaks.
+let _thinkingMd = null;
+
+/**
+ * Renders a model's thinking trace as Markdown when markdown-it is available
+ * (it is loaded globally by index.erb for message rendering); falls back to
+ * escaped text with <br> line breaks otherwise, so the panel never shows
+ * raw literal markdown markers like **bold** or `- ` lists as plain strings.
+ * @param {string} thinkingContent
+ * @returns {string} HTML
+ */
+function renderThinkingMarkdown(thinkingContent) {
+  const text = String(thinkingContent == null ? '' : thinkingContent);
+  try {
+    if (typeof markdownit === 'function') {
+      if (!_thinkingMd) {
+        _thinkingMd = markdownit({ html: false, breaks: true, linkify: true });
+      }
+      return _thinkingMd.render(text);
+    }
+  } catch (_) {
+    // fall through to the escaped-text fallback
+  }
+  return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
 function renderThinkingBlock(thinkingContent, title = null) {
   // Use translated title if not provided
   if (!title && typeof webUIi18n !== 'undefined') {
@@ -31,8 +59,10 @@ function renderThinkingBlock(thinkingContent, title = null) {
           <span>${title}</span>
         </div>
       </div>
-      <div class="card-body thinking-block-content" style="max-height: 0; overflow: hidden; padding: 0; transition: max-height 0.3s ease-out, padding 0.3s ease-out;">
-        <div class="card-text">${escapeHtml(thinkingContent).replace(/\n/g, '<br>')}</div>
+      <div class="card-body thinking-block-content">
+        <div class="thinking-block-inner">
+          <div class="card-text">${renderThinkingMarkdown(thinkingContent)}</div>
+        </div>
       </div>
     </div>
   `;
@@ -45,49 +75,10 @@ function renderThinkingBlock(thinkingContent, title = null) {
 function toggleThinkingBlock(blockId) {
   const block = $id(blockId);
   if (!block) return;
-
-  const content = block.querySelector('.thinking-block-content');
-  if (!content) return;
-
-  const isExpanding = !block.classList.contains('expanded');
-
-  if (isExpanding) {
-    // Measure actual content height before expanding (with padding)
-    content.style.maxHeight = 'none';
-    content.style.overflow = 'visible';
-    content.style.padding = '1rem';  // Bootstrap card-body default padding
-    const actualHeight = content.scrollHeight;
-    content.style.maxHeight = '0';
-    content.style.overflow = 'hidden';
-    content.style.padding = '0';
-
-    // Force reflow
-    content.offsetHeight;
-
-    // Apply actual height for smooth animation
-    block.classList.add('expanded');
-    content.style.maxHeight = actualHeight + 'px';
-    content.style.padding = '1rem';
-
-    // Remove inline max-height after animation completes
-    setTimeout(() => {
-      if (block.classList.contains('expanded')) {
-        content.style.maxHeight = 'none';
-      }
-    }, 500);
-  } else {
-    // Collapsing: set current height first
-    const currentHeight = content.scrollHeight;
-    content.style.maxHeight = currentHeight + 'px';
-
-    // Force reflow
-    content.offsetHeight;
-
-    // Then collapse to 0
-    block.classList.remove('expanded');
-    content.style.maxHeight = '0';
-    content.style.padding = '0';
-  }
+  // The open/close animation and the chevron rotation are both driven by CSS
+  // off the `.expanded` class (grid-template-rows 0fr <-> 1fr). No height
+  // measurement, so the panel animates smoothly to its natural height.
+  block.classList.toggle('expanded');
 }
 
 // Make toggleThinkingBlock globally accessible
@@ -892,7 +883,9 @@ window.wsHandlers = {
   handleCancelMessage,
   clearProcessedAudioIds,
   isAudioProcessed,
-  markAudioProcessed
+  markAudioProcessed,
+  renderThinkingBlock,
+  renderThinkingMarkdown
 };
 
 // Support for Jest testing environment (CommonJS)

@@ -67,8 +67,27 @@ const WorkflowViewer = (function () {
   ];
 
   // ── View state save/restore ─────────────────────────────────
+
+  // True when the graph's rendered bounds intersect the container viewport.
+  // Guards the save/restore cycle against "blank view" poisoning: renders and
+  // view-state snapshots that happen while the container is hidden/zero-size
+  // (panel collapsed, mode switching, mid-animation) produce transforms that
+  // place the content off-screen; validating here lets callers fall back to a
+  // fresh fit instead of showing (or memorising) an empty canvas.
+  function viewShowsContent() {
+    if (!graph || !container) return false;
+    var cw = container.clientWidth, ch = container.clientHeight;
+    if (cw === 0 || ch === 0) return false;
+    var b = graph.getGraphBounds();
+    if (!b || b.width === 0 || b.height === 0) return false;
+    return b.x < cw && b.y < ch && (b.x + b.width) > 0 && (b.y + b.height) > 0;
+  }
+
   function saveViewState() {
     if (!graph || !currentApp) return;
+    // Never memorise a state in which nothing is visible — restoring it later
+    // would reproduce the blank view instead of fixing it.
+    if (!viewShowsContent()) return;
     var view = graph.getView();
     viewStates[currentApp] = {
       scale: view.scale || 1,
@@ -81,6 +100,13 @@ const WorkflowViewer = (function () {
     if (!graph || !currentApp || !viewStates[currentApp]) return false;
     var vs = viewStates[currentApp];
     graph.getView().scaleAndTranslate(vs.scale, vs.tx, vs.ty);
+    // A saved state can still be wrong for the CURRENT container size (e.g.
+    // captured in floating mode, restored inline). Report failure so the
+    // caller falls back to fitGraphToContainer(); drop the stale entry.
+    if (!viewShowsContent()) {
+      delete viewStates[currentApp];
+      return false;
+    }
     return true;
   }
 
@@ -367,15 +393,22 @@ const WorkflowViewer = (function () {
       sharedGroups.forEach(function (g) { (g.tool_names || []).forEach(function (n) { grouped.add(n); }); });
       var inlineTools = tools.filter(function (t) { return !grouped.has(t.name); });
 
+      // Tools the session unlocked dynamically via request_tool (progressive
+      // tool disclosure). Conditional groups flip \uD83D\uDD12 \u2192 \uD83D\udd13 once any of their
+      // tools is unlocked, and unlocked tool names get a \u2713 so the chart
+      // reflects the session's actual (widened) capability set.
+      var unlockedSet = new Set(data.unlocked_tools || []);
+
       var toolBody = [];
       sharedGroups.forEach(function (g) {
         var names = g.tool_names || [];
         var gk = 'tg:' + g.name;
         var isExp = expanded.has(gk);
         var arrow = (names.length > 0) ? (isExp ? '\u25be ' : '\u25b8 ') : '';
-        var gLock = (g.visibility === 'conditional') ? '\uD83D\uDD12 ' : '';
+        var groupUnlocked = names.some(function (n) { return unlockedSet.has(n); });
+        var gLock = (g.visibility === 'conditional') ? (groupUnlocked ? '\uD83D\udd13 ' : '\uD83D\uDD12 ') : '';
         toolBody.push(arrow + gLock + titleCase(g.name.replace(/_/g, ' ')) + ' (' + names.length + ')');
-        if (isExp) names.forEach(function (n) { toolBody.push('\u00a0\u00a0\u00a0\u00a0<span data-tool="' + escHtml(n) + '">' + titleCase(n.replace(/_/g, ' ')) + '</span>'); });
+        if (isExp) names.forEach(function (n) { toolBody.push('\u00a0\u00a0\u00a0\u00a0<span data-tool="' + escHtml(n) + '">' + titleCase(n.replace(/_/g, ' ')) + (unlockedSet.has(n) ? ' \u2713' : '') + '</span>'); });
       });
       inlineTools.forEach(function (t) {
         var tLock = (t.visibility === 'conditional') ? '\uD83D\uDD12 ' : '';
@@ -1678,6 +1711,22 @@ const WorkflowViewer = (function () {
     refresh: function () {
       if (!this.isOpen() || !currentData) return;
       refreshGraph();
+    },
+    // Force a fresh fit to the container's CURRENT size. Called when a
+    // surrounding panel finishes its expand animation (mid-animation resize
+    // events can have fitted the graph to a partially-expanded height).
+    refit: function () {
+      if (!this.isOpen() || !graph) return;
+      fitGraphToContainer();
+    },
+    // Re-FETCH the current app's graph (server-side state such as the
+    // session's dynamically unlocked tools changed). refresh() alone would
+    // re-render stale data, so drop the dedup guard and load again.
+    reloadCurrent: function () {
+      if (!currentApp) return;
+      var name = currentApp;
+      currentApp = null;
+      this.loadApp(name);
     },
     _doLoadApp: function (name) {
       if (!container || !Graph || !name) return;

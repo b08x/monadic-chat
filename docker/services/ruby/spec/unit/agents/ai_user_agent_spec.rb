@@ -328,7 +328,7 @@ RSpec.describe AIUserAgent do
       stub_const('CONFIG', {})
 
       model = agent.send(:default_model_for_provider, "openai")
-      expect(model).to eq("gpt-5.4")
+      expect(model).to eq("gpt-5.6-terra")
 
       model = agent.send(:default_model_for_provider, "anthropic")
       expect(model).to eq("claude-sonnet-5")
@@ -339,7 +339,7 @@ RSpec.describe AIUserAgent do
       providers_and_defaults = {
         "gemini" => "gemini-3.5-flash",
         "mistral" => "mistral-medium-3-5",
-        "grok" => "grok-4.20-0309-non-reasoning",
+        "grok" => "grok-4.5",
         "deepseek" => "deepseek-v4-flash",
         "cohere" => "command-a-plus-05-2026"
       }
