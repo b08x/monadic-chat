@@ -12,8 +12,23 @@
     - [メッセージ入力](/ja/basic-usage/message-input.md)
     - [Workflow Viewer](/ja/basic-usage/workflow-viewer.md)
     - [基本アプリ](/ja/basic-usage/basic-apps.md)
-    - [PDFストレージ](/ja/basic-usage/pdf_storage.md)
+    - [PDF Database](/ja/basic-usage/pdf_storage.md)
     - [シンタックスハイライト](/ja/basic-usage/syntax-highlighting.md)
+
+- **アプリ**
+
+    - [チャット・アシスタントアプリ](/ja/apps/chat-apps.md)
+    - [語学学習アプリ](/ja/apps/language-apps.md)
+    - [文章・ドキュメント作成アプリ](/ja/apps/writing-apps.md)
+    - [Image Generator](/ja/apps/image-generator.md)
+    - [Video Generator](/ja/apps/video-generator.md)
+    - [Music Generator](/ja/apps/music-generator.md)
+    - [図解・可視化アプリ](/ja/apps/diagram-apps.md)
+    - [Web・メディア分析アプリ](/ja/apps/analysis-apps.md)
+    - [Knowledge Base](/ja/apps/knowledge-base.md)
+    - [コーディング・ノートブックアプリ](/ja/apps/coding-apps.md)
+    - [Music Lab と Music Analyst](/ja/apps/music-apps.md)
+    - [AutoForge / Artifact Builder](/ja/apps/auto_forge.md)
 
 - **Docker連携**
     - [基本構造](/ja/docker-integration/basic-architecture.md)
@@ -31,7 +46,9 @@
     - [Monadic DSLリファレンス](/ja/advanced-topics/monadic_dsl.md)
     - [アプリの設定項目](/ja/advanced-topics/setting-items.md)
     - [レシピ・ファイルの例](/ja/advanced-topics/recipe-examples.md)
+    - [ツールグループ](/ja/advanced-topics/tool-groups.md)
     - [Monadicモード](/ja/advanced-topics/monadic-mode.md)
+    - [セッションコンテキスト](/ja/advanced-topics/session-context.md)
     - [Dockerコンテナの追加](/ja/advanced-topics/adding-containers.md)
     - [Ollamaの利用](/ja/advanced-topics/ollama.md)
     - [ヘルプシステムの設定](/ja/advanced-topics/help-system.md)
@@ -40,6 +57,7 @@
     
 - **リファレンス**
 
+    - [プロバイダーとモデル](/ja/reference/providers.md)
     - [設定リファレンス](/ja/reference/configuration.md)
     
 - **よくある質問**

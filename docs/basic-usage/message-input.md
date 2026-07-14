@@ -6,13 +6,13 @@ After starting the server and selecting an app and configuring it, click the `St
 
 Enter a message in the text area and click the `Send` button to send the message. To use voice input, click the `Speech Input` button to start voice input, and click the `Stop` button to end voice input. The voice is converted to text via Speech-to-Text API and displayed in the text area.
 
-?> To chat smoothly with the AI agent using voice input and speech synthesis, it is convenient to turn on `Auto Speech` and `Easy Submit` in the System Settings. These are enabled by default in the [Voice Chat](./basic-apps.md#voice-chat) app.
+?> To chat smoothly with the AI agent using voice input and speech synthesis, it is convenient to turn on `Auto Speech` and `Easy Submit` in the System Settings. These are enabled by default in the [Voice Chat](../apps/chat-apps.md#voice-chat) app.
 
 ?> The `Role` selector is used to select the role of the message. Normally, select `User`, but by selecting `Assistant` or `System`, you can add or modify the context of the chat. For more information, see the [FAQ](../faq/faq-user-interface.md).
 
 ## Uploading Images :id=uploading-images
 
-Image uploads are supported for vision-capable models (OpenAI, Anthropic Claude, xAI Grok, Google Gemini, Mistral).
+Image uploads are supported for vision-capable models (OpenAI, Anthropic Claude, xAI Grok, Google Gemini, Mistral, Cohere, Ollama).
 
 Click `Image` (or `Image/PDF` for models that support PDF) to select an image. Supported formats: JPG, JPEG, PNG, GIF, WebP.
 
@@ -72,7 +72,7 @@ After voice input, a `p-value` indicating the confidence of the voice input is d
 
 ## Speech-to-Text Model Selection :id=speech-to-text-model-selection
 
-Select the Speech-to-Text model in the console settings. Available models include OpenAI and Gemini options.
+Select the Speech-to-Text model in the web UI's Speech Settings panel. Models are available from multiple providers — see the [Speech Settings Panel](/basic-usage/web-interface.md) for the current roster (each option is enabled when its provider's API key is verified).
 
 ## Realtime Streaming Transcription :id=realtime-streaming-transcription
 

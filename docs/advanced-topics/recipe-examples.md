@@ -1,10 +1,12 @@
 # Recipe File Examples
 
-This page provides examples of different types of Monadic Chat apps using the MDSL (Monadic Domain Specific Language) format. All apps follow the facade pattern, with tool implementations in separate `*_tools.rb` files.
+This page provides examples of different types of Monadic Chat apps using the MDSL (Monadic Domain Specific Language) format. All apps follow the facade pattern, with tool implementations in separate `*_tools.rb` files — see [Always Use Facade Pattern](./develop_apps.md#always-use-facade-pattern) for the pattern explanation and canonical template.
+
+The examples on this page are self-contained illustrations of MDSL patterns. For the current production recipes (which use shared constants, `context_schema`, and `import_shared_tools`), see the app implementations in `docker/services/ruby/apps/`.
 
 ## Important Naming Convention
 
-!> **Critical:** The MDSL app name must match the Ruby class name exactly. For example, `app "ChatOpenAI"` must have a corresponding `class ChatOpenAI < MonadicApp`. This ensures proper menu grouping and functionality.
+!> **Critical:** The MDSL app name must match the Ruby class name exactly (e.g., `app "ChatOpenAI"` ↔ `class ChatOpenAI < MonadicApp`). For naming conventions and file structure patterns, see [Developing Apps](./develop_apps.md#file-structure-patterns).
 
 ## Simple Apps
 
@@ -29,7 +31,9 @@ end
 ```
 
 <details>
-<summary>Full Example (math_tutor_openai.mdsl)</summary>
+<summary>Full Example: Math Tutor (illustrative)</summary>
+
+The following is a self-contained illustrative example. The shipped Math Tutor app has since evolved (shared constants, `context_schema`, `import_shared_tools`) — see `docker/services/ruby/apps/math_tutor/` for the current recipe.
 
 ```ruby
 app "MathTutorOpenAI" do
@@ -237,9 +241,9 @@ app "WikipediaOpenAI" do
   PROMPT
 
   tools do
-    define_tool "search_wikipedia", "Search Wikipedia for articles" do
-      parameter :query, "string", "Search query", required: true
-      parameter :lang, "string", "Language code (default: en)"
+    define_tool "search_wikipedia", "Search Wikipedia articles using the Wikimedia API" do
+      parameter :search_query, "string", "The search query for Wikipedia", required: true
+      parameter :language_code, "string", "Language code for Wikipedia (default: 'en')", required: false
     end
   end
 end
@@ -250,7 +254,7 @@ Create a corresponding `wikipedia_tools.rb` file:
 
 ```ruby
 module WikipediaTools
-  def search_wikipedia(query:, lang: "en")
+  def search_wikipedia(search_query:, language_code: "en")
     # Implementation here
   end
 end
@@ -268,7 +272,7 @@ class WikipediaOpenAI < MonadicApp
   include OpenAIHelper
   
   # Tool method implementation placeholder
-  def search_wikipedia(query:)
+  def search_wikipedia(search_query:, language_code: "en")
     # This would be implemented in the actual app
   end
 end
@@ -286,7 +290,9 @@ Monadic Mode allows apps to maintain structured context throughout the conversat
 - Requires JSON-formatted responses from the model
 
 <details>
-<summary>Example: Novel Writer (novel_writer_openai.mdsl)</summary>
+<summary>Example: Novel Writer (illustrative)</summary>
+
+The following is a self-contained illustrative example. The shipped Novel Writer app has since evolved — see `docker/services/ruby/apps/novel_writer/` for the current recipe.
 
 ```ruby
 app "NovelWriterOpenAI" do
@@ -577,7 +583,7 @@ Many common tools are already implemented in `lib/monadic/app.rb` and don't need
 
 ## Troubleshooting
 
-- **Empty tools blocks**: Even if using only standard tools, include an empty `tools do end` block
+- **Empty tools blocks**: Do not leave an empty `tools do end` block — it can cause "Maximum function call depth exceeded" errors. Either define the tools the app actually uses or omit the block entirely (see the [Monadic DSL Reference](/advanced-topics/monadic_dsl.md))
 - **Menu grouping issues**: Check that app name matches class name exactly
 - **Missing models**: Ensure helper's `list_models` uses `$MODELS` cache
 - **Tool not found**: Verify the `*_tools.rb` file exists and module is included

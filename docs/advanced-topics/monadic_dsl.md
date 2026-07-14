@@ -56,7 +56,7 @@ app "AppNameProvider" do  # e.g., "ChatOpenAI", "CodingAssistantClaude", "Resear
   # icon "mail"                       # Fuzzy matching (finds closest match like envelope)
   # icon "<i class='fas fa-code'></i>" # Custom HTML is preserved as-is
   
-  # For available icons, see: https://fontawesome.com/v5/search?ic=free
+  # For available icons, see: https://fontawesome.com/v6/search?ic=free
 
   # App naming option:
   display_name "Application Name"      # Name shown in the UI (required)
@@ -73,6 +73,11 @@ llm do
   model "<model-id>"  # Model name
   temperature 0.7  # Response randomness (0.0-1.0)
   max_tokens 4000  # Maximum response length
+  reasoning_effort "high"  # Reasoning depth for reasoning-capable models
+                           # (e.g., "low", "medium", "high"; when omitted,
+                           # defaults to "none" = reasoning disabled)
+  context_size 25  # Number of recent messages sent to the model
+                   # (client-side sliding window; sets the UI default)
 end
 ```
 
@@ -186,7 +191,7 @@ features do
   # The following features are tied to specific system components:
 
   pdf_vector_storage true # Enable PDF file upload and vector storage for RAG (Retrieval-Augmented Generation)
-  toggle true             # Enable collapsible sections for meta information and tool usage (primarily for Claude apps)
+  toggle true             # Render <div class='toggle'> blocks in assistant messages as collapsible show/hide sections
   jupyter true            # Enable access to Jupyter notebook interface
   image_generation true   # Enable AI image generation tools in conversation
   monadic true            # REQUIRED for Session State apps - enables context management via tools
@@ -229,19 +234,25 @@ import_shared_tools :python_execution, visibility: "always"
 import_shared_tools :web_automation, visibility: "conditional"
 ```
 
-**Available Tool Groups**:
-- `:file_operations` - File write, list, delete (3 tools)
-- `:file_reading` - Read text, PDF, Office files (3 tools)
-- `:python_execution` - Execute Python code (4 tools)
-- `:jupyter_operations` - Jupyter notebook management (12 tools)
-- `:web_automation` - Web scraping, screenshots (4 tools, requires Selenium)
-- `:video_analysis_openai` - Video analysis (1 tool, requires OpenAI API key)
+**Available Tool Groups**: Tool groups are defined in the shared tool registry (`lib/monadic/shared_tools/registry.rb`). See [Tool Groups](tool-groups.md) for the complete list of groups, the tools they contain, and their availability conditions.
 
 **Visibility Modes**:
 - `always`: Tool group is always available
 - `conditional`: Tool group availability depends on runtime conditions (e.g., Selenium container running)
 
-See [Tool Groups](tool-groups.md) for detailed information about each tool group.
+#### Dynamic Skills (reachable_skills)
+
+Instead of importing every tool group up front, an app can declare groups it is allowed to acquire on demand during a conversation with `reachable_skills`. The groups stay hidden until the model requests them by name via `request_tool`:
+
+```ruby
+# Groups the app can unlock when the conversation calls for them
+reachable_skills :web_search_tools, :image_analysis
+
+# Or grant the curated pool of read-only safe groups in one line
+reachable_skills :safe
+```
+
+`reachable_skills :group_a, :group_b` is equivalent to importing each group with `visibility: "conditional"`, but states the intent more clearly. See the "Dynamic Skills" section in [Tool Groups](tool-groups.md) for details.
 
 #### Defining Custom Tools
 
@@ -274,6 +285,18 @@ tools do
     parameter :filename, "string", "Name of file to analyze", required: true
   end
 end
+```
+
+### 6. Context Compaction
+
+For apps running on OpenAI models, the `compaction` block controls server-side conversation compaction (Responses API). It is enabled by default with a standard threshold, so apps only declare the block to customize the threshold or to opt out:
+
+```ruby
+compaction do
+  compact_threshold 180_000   # Custom token threshold
+end
+
+compaction false              # Opt out — rely on the context_size sliding window only
 ```
 
 ## Example Applications
@@ -350,15 +373,7 @@ Tools in Monadic Chat must be explicitly defined in MDSL files. Each tool defini
 
 #### File Structure
 
-Standard Monadic Chat file naming conventions:
-
-```text
-apps/app_name/
-├── app_name_constants.rb    # Optional: Shared constants (ICON, DESCRIPTION, etc.)
-├── app_name_tools.rb        # Tool method implementations
-├── app_name_provider.mdsl   # MDSL interface (e.g., app_name_openai.mdsl)
-└── app_name_provider.mdsl   # Additional provider versions
-```
+Tool implementations live in a companion `*_tools.rb` file alongside the app's `.mdsl` files. For the standard directory layouts and file naming conventions, see [File Structure Patterns](develop_apps.md#file-structure-patterns) in the Developing Apps guide.
 
 **For Shared Tool Groups**:
 
@@ -412,113 +427,33 @@ Tool implementation in MDSL follows a structured approach using the facade patte
 1. **Tool Definition**: Tools must be defined explicitly in the MDSL file
 2. **Tool Implementation**: Implement methods in a companion `*_tools.rb` file using the facade pattern
 
-#### Recommended: Facade Pattern
-
-Create your MDSL file with explicit tool definitions:
+A minimal example — the tool is declared in the MDSL file, and a facade method in the companion tools file validates input and handles errors:
 
 ```ruby
-# mermaid_grapher_openai.mdsl
-app "MermaidGrapherOpenAI" do
-  description "Create diagrams using mermaid.js syntax"
-  icon "diagram"
-  display_name "Mermaid Grapher"
-  
-  system_prompt <<~PROMPT
-    You help visualize data using mermaid.js.
-    Use the mermaid_documentation function to get syntax examples.
-  PROMPT
-  
-  llm do
-    provider "openai"
-    model ENV.fetch("OPENAI_DEFAULT_MODEL")  # Falls back to providerDefaults
-    temperature 0.0
-  end
-  
-  features do
-    mermaid true
-  end
-  
-  tools do
-    define_tool "mermaid_documentation", "Get mermaid.js syntax documentation" do
-      parameter :diagram_type, "string", "Type of diagram (graph, sequence, flowchart, etc.)", required: true
-    end
+# my_app_openai.mdsl (excerpt)
+tools do
+  define_tool "mermaid_documentation", "Get mermaid.js syntax documentation" do
+    parameter :diagram_type, "string", "Type of diagram (graph, sequence, flowchart, etc.)", required: true
   end
 end
 ```
 
-Then create a tools file with facade methods:
-
 ```ruby
-# mermaid_grapher_tools.rb
-class MermaidGrapherOpenAI < MonadicApp
+# my_app_tools.rb
+class MyAppOpenAI < MonadicApp
   # Facade method with validation and error handling
   def mermaid_documentation(diagram_type: "graph")
-    raise ArgumentError, "diagram_type is required" if diagram_type.nil? || diagram_type.empty?
-    
-    begin
-      result = fetch_web_content(url: "https://mermaid.js.org/syntax/#{diagram_type}.html")
-      { success: true, content: result }
-    rescue => e
-      { success: false, error: e.message }
-    end
+    raise ArgumentError, "diagram_type is required" if diagram_type.to_s.empty?
+
+    result = fetch_web_content(url: "https://mermaid.js.org/syntax/#{diagram_type}.html")
+    { success: true, content: result }
+  rescue => e
+    { success: false, error: e.message }
   end
 end
 ```
 
-#### Using Helper Modules with Facade Pattern
-
-For shared functionality across providers:
-
-```ruby
-# wikipedia_openai.mdsl
-app "WikipediaOpenAI" do
-  description "Search Wikipedia articles"
-  icon "fa-brands fa-wikipedia-w"
-  display_name "Wikipedia"
-  
-  system_prompt <<~PROMPT
-    Use search_wikipedia to find information.
-  PROMPT
-  
-  llm do
-    provider "openai"
-    model ENV.fetch("OPENAI_DEFAULT_MODEL")  # Falls back to providerDefaults
-    temperature 0.3
-  end
-  
-  features do
-    group "OpenAI"
-  end
-  
-  include_modules ["WikipediaHelper"]
-  
-  tools do
-    # Auto-completed from wikipedia_tools.rb
-  end
-end
-```
-
-Create a tools file with facade methods that wrap the helper:
-
-```ruby
-# wikipedia_tools.rb
-class WikipediaOpenAI < MonadicApp
-  include WikipediaHelper
-  
-  # Facade method with validation
-  def search_wikipedia(search_query: "", language_code: "en")
-    raise ArgumentError, "search_query is required" if search_query.empty?
-    
-    begin
-      # Call the helper module method
-      super(search_query: search_query, language_code: language_code)
-    rescue => e
-      { error: e.message }
-    end
-  end
-end
-```
-
+For the full pattern explanation and the canonical implementation template — including wrapping helper modules imported via `include_modules` — see [Always Use Facade Pattern](develop_apps.md#always-use-facade-pattern) in the Developing Apps guide. For complete worked examples (such as a Wikipedia app whose facade method wraps a helper module), see [Recipe Examples](recipe-examples.md).
 
 ### Session State Apps
 
@@ -629,16 +564,7 @@ context_schema do
 end
 ```
 
-#### Session State vs Session Context
-
-| Feature | Session State | Session Context |
-|---------|---------------|-----------------|
-| **Mechanism** | Explicit tool calls (`load_context`, `save_context`) | Automatic background extraction |
-| **Control** | Full control over when/what to save | Automatic after each response |
-| **Configuration** | Tool definitions | `context_schema` block |
-| **Use Case** | Complex state management | Simple context tracking |
-
-Both features require `monadic true` and can be used together in the same app.
+Session State (explicit tool calls) and Session Context (automatic extraction) both require `monadic true` and can be used together in the same app. For a side-by-side comparison of the two mechanisms and the related terminology, see the [Terminology Guide](monadic-mode.md#terminology-guide) in the Monadic Mode documentation.
 
 ### Provider-Specific Adapters
 
@@ -646,7 +572,7 @@ The DSL automatically formats function definitions appropriately for different A
 
 - OpenAI: Converts to OpenAI's function calling format with `type: "function"` wrapper
 - Anthropic: Adapts to Claude's tool format with `input_schema` property
-- Cohere: Maps to Cohere's Command models `parameter_definitions` format
+- Cohere: Uses the OpenAI-style `type: "function"` format with a JSON Schema `parameters` object
 - Mistral: Formats for Mistral's function calling API
 - Gemini: Structures for Google Gemini models with `function_declarations` wrapper
 - DeepSeek: Converts to DeepSeek's function calling format
@@ -654,7 +580,7 @@ The DSL automatically formats function definitions appropriately for different A
 
 This automatic conversion means you can write your tool definitions once in the DSL, and they will work across different providers without manual conversion.
 
-**Note about FontAwesome Icons**: When specifying icons using the `icon` method, you can use any icon name from FontAwesome 5 Free. Browse the available icons at https://fontawesome.com/v5/search?ic=free. The system will automatically convert simple names like "brain" to the proper HTML with appropriate styles.
+**Note about Font Awesome Icons**: When specifying icons using the `icon` method, you can use any icon name from Font Awesome 6 Free. Browse the available icons at https://fontawesome.com/v6/search?ic=free. The system will automatically convert simple names like "brain" to the proper HTML with appropriate styles.
 
 ## Debugging and Testing
 
@@ -665,7 +591,7 @@ When troubleshooting DSL apps, check for:
 3. Properly formatted tool definitions
 4. Compatibility between selected features and provider capabilities
 
-Error logs are stored in `~/monadic/data/error.log` when apps fail to load.
+When apps fail to load, the errors are collected at startup and printed to the server console, listing each failed app and the reason.
 
 ## Best Practices
 
@@ -710,7 +636,7 @@ end
 
 ### Provider-Specific Considerations
 
-- **Function Limits**: All providers support up to 20 function calls per conversation turn
+- **Function Limits**: Most providers allow up to 20 function calls per conversation turn (Mistral allows 30); the exact limit is defined by each provider helper's `MAX_FUNC_CALLS` constant
 - **Code Execution**: All providers use `run_code` for code execution
 - **Array Parameters**: OpenAI requires `items` property for arrays
 - **Error Prevention**: Built-in error pattern detection prevents infinite retry loops

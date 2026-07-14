@@ -10,6 +10,8 @@ When you start Monadic Chat, the availability of each container is displayed in 
 
 ### Available Containers
 
+This list shows the containers common to most setups; see [Basic Architecture](basic-architecture.md#standard-containers) for the full roster and each container's role.
+
 - **Ruby Container** (`monadic-chat-ruby-container`): Main application container
   ```shell
   docker exec -it monadic-chat-ruby-container bash
@@ -35,20 +37,26 @@ When you start Monadic Chat, the availability of each container is displayed in 
   docker exec -it monadic-chat-selenium-container bash
   ```
 
+- **Privacy Container** (`monadic-chat-privacy-container`): Local PII masking for the Privacy Filter (started by default)
+  ```shell
+  docker exec -it monadic-chat-privacy-container bash
+  ```
+
+- **Extractor Container** (`monadic-chat-extractor-container`): Document extraction for the Knowledge Base Quality Pack (opt-in, present only when installed via Install Options)
+  ```shell
+  docker exec -it monadic-chat-extractor-container bash
+  ```
+
 ?> **Development Tip**: When developing locally, you can stop the Ruby container and run the application on your host machine while keeping other containers running.
 
 ## JupyterLab
 
-By using the `Actions/Start JupyterLab` menu in the Monadic Chat console, you can start JupyterLab, which will launch with `/monadic/data` as the current directory on the Python container. By clicking `Terminal` on the JupyterLab Launcher screen, you can access the Python container.
-
-<!-- SCREENSHOT: JupyterLab terminal window showing command prompt at /monadic/data directory -->
+The `Actions/Start JupyterLab` menu starts JupyterLab on the Python container with `/monadic/data` as the current directory; clicking `Terminal` on the JupyterLab Launcher screen gives you shell access to the container. See [JupyterLab Integration](jupyterlab.md) for details.
 
 ## Common Use Cases
 
 ### Python Container
-- Install additional Python packages:
-  - `uv pip install --no-cache package_name` (recommended)
-  - `pip install package_name`
+- Install additional Python packages: `uv pip install --no-cache package_name` (for persistent installs, see [Python Container](python-container.md))
 - Access shared data: `cd /monadic/data`
 - Run Python scripts: `python /monadic/data/scripts/my_script.py`
 

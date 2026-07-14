@@ -35,9 +35,9 @@ These tool groups are always available and don't require additional setup:
 **Apps using this**: Code Interpreter, Jupyter Notebook
 
 #### File Operations (3 tools)
-- Write files to shared folder
+- Read files from shared folder
+- Write or append to files in shared folder
 - List files in shared folder
-- Delete files from shared folder
 
 **Apps using this**: Chat Plus, Code Interpreter, Jupyter Notebook
 
@@ -66,7 +66,7 @@ These tool groups are always available and don't require additional setup:
 - Dispatch 2-5 independent sub-tasks to run in parallel via separate API calls
 - Each sub-agent runs as a text-only call; results are collected and synthesized
 - Supports **web search** for sub-agents when the Web Search toggle is enabled in the UI
-- Web search uses provider-native mechanisms (OpenAI/Grok Responses API, Gemini grounding, Claude server-side search) or Tavily API as a fallback for providers without native search (Mistral, Cohere, DeepSeek)
+- Web search uses the provider's native mechanism, or the Tavily API for providers without native search — see the [Provider Capabilities table](../basic-usage/basic-apps.md#provider-capabilities)
 - Progress displayed in real-time via the temporary card UI
 
 **Apps using this**: Research Assistant (all providers)
@@ -77,30 +77,43 @@ These tool groups are always available and don't require additional setup:
 - Automatically stops the tool loop when verification passes or the retry limit (3 attempts) is reached
 - Verification status is displayed in the temporary card UI during processing
 
-**Apps using this**: Code Interpreter, Jupyter Notebook, AutoForge, Mermaid Grapher, Chord Accompanist (all providers)
+**Apps using this**: Code Interpreter, Jupyter Notebook, AutoForge, Mermaid Grapher, DrawIO Grapher, Second Opinion (all providers)
+
+#### App Creation (3 tools)
+- List all available Monadic Chat applications
+- Get detailed information about a specific app
+- Create a basic app template file
+
+**Apps using this**: Not imported by built-in apps by default; available to custom apps via `import_shared_tools` or `reachable_skills`
+
+#### Session Context (4 tools)
+- Get, update, and clear conversation context (topics, people, notes)
+- Remove specific items from context
+- Context is displayed in the sidebar panel
+
+**Apps using this**: Chat Plus (all providers)
 
 ### Conditionally Available
 
 These tool groups require specific containers or API keys to be available:
 
-#### Web Automation (4 tools)
-**Requires**: Selenium container running
+#### Web Automation (16 tools)
+**Requires**: Selenium and Python containers running
 
-- Capture viewport-sized screenshots of web pages
-- Capture full-page screenshots
-- Debug web applications with automated testing
-- Scrape web content
+- Capture web pages as viewport-sized screenshots (with device presets)
+- Run an interactive browser session visible via noVNC
+- Navigate, click, type, scroll, select, and press keys in the interactive browser
+- Inspect page structure and annotate candidate elements for disambiguation
 
 **Apps using this**: Web Insight (all providers), AutoForge (all providers)
 
 **How to enable**:
-1. Go to **Actions** menu
-2. Select **Start Selenium Container**
-3. Wait for the container to start
-4. The tool group badge will change from unavailable to available
+The Selenium container starts automatically with Monadic Chat. If the badge
+shows the group as unavailable, wait for startup to finish; if the Selenium
+image is missing, run **Actions → Build All** to download it.
 
 #### Video Analysis (1 tool)
-**Requires**: OpenAI API key configured
+**Requires**: At least one vision-capable provider API key (OpenAI, Anthropic, Gemini, or xAI)
 
 - Analyze video content using multimodal AI
 - Generate descriptions from video frames
@@ -108,8 +121,39 @@ These tool groups require specific containers or API keys to be available:
 **Apps using this**: Video Describer
 
 **How to enable**:
-1. Configure your OpenAI API key in Settings
+1. Configure at least one of the supported API keys (OpenAI, Anthropic, Gemini, or xAI) in Settings
 2. The tool group will become available automatically
+
+#### Web Search (4 tools)
+**Requires**: `TAVILY_API_KEY` for providers without native web search — see the [Provider Capabilities table](../basic-usage/basic-apps.md#provider-capabilities)
+
+- Search the web using the provider-appropriate method (native or Tavily)
+- Fetch content from URLs and save it to the shared folder
+- Tavily-backed search and page fetch with citations
+
+**Apps using this**: Research Assistant, Mermaid Grapher, Wikipedia
+
+#### Audio Transcription (1 tool)
+**Requires**: OpenAI or Gemini API key configured
+
+- Transcribe audio files using speech-to-text capabilities
+
+**Apps using this**: Video Describer, Speech Draft Helper
+
+#### Image Analysis (1 tool)
+**Requires**: At least one vision-capable provider API key (OpenAI, Anthropic, Gemini, or xAI)
+
+- Analyze and describe the contents of an image file using vision capabilities
+
+**Apps using this**: Code Interpreter, Research Assistant (all providers)
+
+#### Library Search (1 tool)
+**Requires**: Knowledge Base (embeddings service) available
+
+- Search the project-wide Knowledge Base for passages relevant to a query
+- Returns snippets with citations linking back to the original conversation or document
+
+**Apps using this**: Automatically injected into eligible apps; the tool is additionally gated by the per-session Knowledge Base retrieval toggle
 
 ## Understanding Tool Availability
 
@@ -125,7 +169,7 @@ Tools may be unavailable for several reasons:
 
 When you try to use an unavailable tool, you'll receive a clear error message explaining:
 - What is missing (e.g., "Selenium container is not running")
-- How to fix it (e.g., "Start the Selenium container from Actions menu")
+- How to fix it (e.g., wait for container startup to finish, or run **Actions → Build All** if the Selenium image is missing)
 
 ## Creating Apps with Tool Groups
 
@@ -134,7 +178,7 @@ If you're creating custom apps using MDSL, you can import tool groups instead of
 ### Example
 
 ```ruby
-MonadicApp.register "MyCustomApp" do
+app "MyCustomAppOpenAI" do
   llm do
     provider "openai"
     model "<model-id>"
@@ -159,7 +203,7 @@ How it works:
 3. The whole group is unlocked and its tools become usable within the same conversation.
 
 ```ruby
-MonadicApp.register "MyAssistant" do
+app "MyAssistantOpenAI" do
   llm do
     provider "openai"
     model "<model-id>"
@@ -192,7 +236,7 @@ If a tool group shows as unavailable even after starting the required containers
 
 1. **Refresh the app list**: The UI checks availability every 10 seconds
 2. **Restart containers**: Stop and start the container from the Actions menu
-3. **Check container status**: Use `Actions → Show Container Status` to verify containers are running
+3. **Check container status**: Verify containers are running with `docker ps` (or the status messages in the console panel)
 4. **Check logs**: Container logs may show errors preventing startup
 
 ### Tools Not Working as Expected

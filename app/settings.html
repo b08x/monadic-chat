@@ -122,9 +122,20 @@
 
     /* Brief acknowledgement after a successful save — stays in the
        primary blue family rather than flashing green so the colour stays
-       consistent with the policy (blue = confirm/save). */
+       consistent with the policy (blue = confirm/save). Desaturated
+       relative to the Bootstrap default so the transient flash sits
+       comfortably in the app's muted grey palette. */
     #save-settings-btn.saved {
-      background-color: #0a58ca;
+      background-color: #3b639b;
+      color: #fff;
+    }
+
+    /* Shown when the main process reports the env file write failed —
+       the form stays dirty so the user can retry. Muted brick red
+       (not Bootstrap's vivid #dc3545) for the same palette reason;
+       the triangle icon carries the error semantics. */
+    #save-settings-btn.save-failed {
+      background-color: #a94442;
       color: #fff;
     }
 
@@ -1204,9 +1215,15 @@
       function executeAction(command) {
         const isDirty = (takeSettingsSnapshot() !== settingsInitialSnapshot);
         if (isDirty) {
-          showActionConfirmDialog(() => {
+          showActionConfirmDialog(async () => {
             closingAfterSave = true;
-            document.getElementById('settings-form').dispatchEvent(new Event('submit', { cancelable: true }));
+            let saved = false;
+            try {
+              saved = await saveSettingsFromForm();
+            } finally {
+              closingAfterSave = false;
+            }
+            if (!saved) return; // stay open; the Save button shows the failure state
             window.electronAPI.sendCommand(command);
             window.electronAPI.confirmCloseSettings();
           });
@@ -1260,9 +1277,10 @@
       });
 
       // ─── Save Handler ───
-      document.getElementById('settings-form').addEventListener('submit', (event) => {
-        event.preventDefault();
-
+      // Collects the form, saves via IPC invoke, and reflects the result on
+      // the Save button. Returns true only when the env file write succeeded,
+      // so close-and-save flows can refuse to close on failure.
+      async function saveSettingsFromForm() {
         const distributedMode = document.getElementById('distributed-mode').value;
         const previousMode = document.getElementById('distributed-mode').getAttribute('data-previous-value') || 'off';
         const previousBrowserMode = document.getElementById('browser-mode').getAttribute('data-previous-value') || 'external';
@@ -1302,11 +1320,30 @@
           PRIVACY_LANGS: collectPrivacyLangs()
         };
 
-        window.electronAPI.saveSettings(data);
-
-        // Show save confirmation on the button itself (icon + color only)
         const saveBtn = document.getElementById('save-settings-btn');
         const saveIcon = saveBtn.querySelector('i');
+        saveBtn.disabled = true;
+        let saveResult;
+        try {
+          saveResult = await window.electronAPI.saveSettings(data);
+        } catch (error) {
+          saveResult = { success: false };
+        } finally {
+          saveBtn.disabled = false;
+        }
+
+        if (!saveResult || !saveResult.success) {
+          // Nothing was written — keep the dirty state so the user can retry
+          saveBtn.classList.add('save-failed');
+          saveIcon.className = 'fas fa-triangle-exclamation';
+          setTimeout(() => {
+            saveBtn.classList.remove('save-failed');
+            saveIcon.className = 'fas fa-save';
+          }, 2500);
+          return false;
+        }
+
+        // Show save confirmation on the button itself (icon + color only)
         saveBtn.classList.add('saved');
         saveIcon.className = 'fas fa-check';
         setTimeout(() => {
@@ -1356,6 +1393,13 @@
             window.electronAPI.closeSettings();
           }
         }
+
+        return true;
+      }
+
+      document.getElementById('settings-form').addEventListener('submit', (event) => {
+        event.preventDefault();
+        saveSettingsFromForm();
       });
 
       // ─── Unsaved Changes Dialog ───
@@ -1391,11 +1435,18 @@
         });
         document.getElementById('unsavedSave').addEventListener('click', async () => {
           closingAfterSave = true;
-          try { await onSave?.(); } finally {
+          let saved = false;
+          try {
+            saved = (await onSave?.()) !== false;
+          } finally {
             closingAfterSave = false;
             document.getElementById('unsavedDialog')?.remove();
+          }
+          if (saved) {
             window.electronAPI.confirmCloseSettings();
           }
+          // On failure the window stays open; the Save button shows the
+          // red failure state so the user can retry or discard explicitly
         });
         // Accessibility: focus trap, Escape key dismiss
         setupDialogAccessibility('unsavedDialog', () => {
@@ -1418,7 +1469,7 @@
         document.getElementById('deepseek-api-key').value = data.DEEPSEEK_API_KEY || '';
         document.getElementById('elevenlabs-api-key').value = data.ELEVENLABS_API_KEY || '';
         document.getElementById('tavily-api-key').value = data.TAVILY_API_KEY || '';
-        document.getElementById('rouge-theme').value = data.ROUGE_THEME || 'pastie:light';
+        document.getElementById('rouge-theme').value = data.ROUGE_THEME || 'github:light';
         document.getElementById('tts-dict-path').value = data.TTS_DICT_PATH || '';
         document.getElementById('auto-tts-max-bytes').value = data.AUTO_TTS_MAX_BYTES || '400';
         document.getElementById('extra-logging').checked = data.EXTRA_LOGGING == "true" || false;
@@ -1531,9 +1582,7 @@
       window.electronAPI.onAttemptCloseSettings(() => {
         const isDirtyNow = (takeSettingsSnapshot() !== settingsInitialSnapshot);
         if (isDirtyNow) {
-          showUnsavedDialog(() => {
-            document.getElementById('settings-form').dispatchEvent(new Event('submit', { cancelable: true }));
-          });
+          showUnsavedDialog(() => saveSettingsFromForm());
         } else {
           window.electronAPI.confirmCloseSettings();
         }
@@ -1605,9 +1654,7 @@
       document.getElementById('close-settings-btn').addEventListener('click', () => {
         const isDirtyNow = (takeSettingsSnapshot() !== settingsInitialSnapshot);
         if (isDirtyNow) {
-          showUnsavedDialog(() => {
-            document.getElementById('settings-form').dispatchEvent(new Event('submit', { cancelable: true }));
-          });
+          showUnsavedDialog(() => saveSettingsFromForm());
         } else {
           window.electronAPI.confirmCloseSettings();
         }

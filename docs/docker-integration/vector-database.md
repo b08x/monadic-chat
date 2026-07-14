@@ -30,7 +30,7 @@ Both containers start automatically with Monadic Chat and require no configurati
 Here is the processing flow in the Knowledge Base import pipeline:
 
 1. **Content Extraction**:
-   - PDFs are processed via [pdfplumber](https://github.com/jsvine/pdfplumber) to extract text and tables, with structure recovered as Markdown
+   - PDFs are routed through the Extractor container ([Docling](https://github.com/docling-project/docling) with OCR and layout analysis) when the Knowledge Base Quality Pack is installed; otherwise they are processed via [pdfplumber](https://github.com/jsvine/pdfplumber) to extract text and tables, with structure recovered as Markdown
    - Office files (`.docx`/`.xlsx`/`.pptx`) are extracted via `python-docx` / `openpyxl` / `python-pptx`
    - Markdown and source-code files are read directly; section boundaries come from headings and top-level definitions respectively
    - The extracted content is split into per-section chunks (≈200–4000 chars) with importer-specific boundary rules
@@ -41,7 +41,7 @@ Here is the processing flow in the Knowledge Base import pipeline:
    - Vectors are L2-normalized so cosine similarity reduces to a dot product
 
 3. **Vector Storage**:
-   - Each chunk becomes a Qdrant point under the `library_turns` collection, with the embedding as the vector and `{conversation_id, visibility, turn_idx, text, ...}` as payload
+   - Each chunk becomes a Qdrant point under the `library_turns` collection, with the embedding as the vector and `{conversation_id, scope_app, turn_idx, text, ...}` as payload
    - A conversation-level point lives in the `library_summaries` collection with title, source, content_type, and a placeholder summary embedding, enabling document-level cascade retrieval
 
 4. **Retrieval Process**:
@@ -54,23 +54,23 @@ Here is the processing flow in the Knowledge Base import pipeline:
 
 Qdrant organises data into named collections. Monadic Chat uses the following:
 
-- **`library_summaries`** — One point per conversation/document. Payload: `{conversation_id, visibility, content_type, source, title, language, license, topics, messages, participants, ...}`. Used as the cascade entry point for retrieval and as the source-of-truth for the Knowledge Base browse list.
-- **`library_turns`** — One point per chunked text segment. Vector: chunk embedding. Payload: `{conversation_id, visibility, turn_idx, speaker_id, text, ...}`. Main RAG retrieval unit consumed by the `library_search` tool.
+- **`library_summaries`** — One point per conversation/document. Payload: `{conversation_id, scope_app, content_type, source, title, language, license, topics, messages, participants, ...}`. Used as the cascade entry point for retrieval and as the source-of-truth for the Knowledge Base browse list.
+- **`library_turns`** — One point per chunked text segment. Vector: chunk embedding. Payload: `{conversation_id, scope_app, turn_idx, speaker_id, text, ...}`. Main RAG retrieval unit consumed by the `library_search` tool.
 - **`help_docs` / `help_items`** — Points for the Monadic Help documentation index. Built into the Ruby image at packaging time and loaded once on first start.
 
 All collections use 768-dimensional vectors with cosine distance and HNSW indexing for fast filtered search.
 
-## Visibility Filtering :id=visibility
+## Scope Filtering :id=visibility
 
-Library entries carry a `visibility` payload of either `personal` or `shareable`. The Knowledge Base UI sees both, while the cross-app `library_search` tool only returns `shareable` entries. This replaces the previous per-app PDF isolation model — the Library is project-wide and gates external access through the visibility flag rather than separate physical databases.
+Library entries carry a `scope_app` payload — either an app + provider class name (e.g. `ChatOpenAI`) or the literal `Global` sentinel. The Knowledge Base UI sees every entry regardless of scope, while retrieval filters on `scope_app IN [current app, "Global"]`: app-scoped entries are retrievable only from the app + provider they were saved in, and `Global` entries are retrievable from every app via the `library_search` tool. This replaces the previous per-app PDF isolation model — the Library is project-wide, and cross-app access is opted into per entry via the `Global` scope (see the [scope model](/apps/knowledge-base.md) on the Knowledge Base page).
 
 ## Use in the Knowledge Base :id=use-in-knowledge-base
 
 The Knowledge Base app uses this system to provide unified content Q&A:
 
 1. Users save the current chat session or click **Import file** in the Browse modal
-2. The system extracts, chunks, embeds, and stores the content (PDFs via pdfplumber, Office via python-docx/openpyxl/python-pptx, Markdown/code directly)
-3. Users ask questions about the content; other apps can ask too via `library_search` when the user has flipped the entry to `shareable`
+2. The system extracts, chunks, embeds, and stores the content, following the [processing flow](#technical-implementation) above
+3. Users ask questions about the content; other apps can ask too via `library_search` when the user has flipped the entry to `Global`
 4. The system retrieves the most relevant chunks using a cascade query (summaries → turns) over the Qdrant collections above
 5. Retrieved chunks are passed to the LLM to ground its answer
 
@@ -78,12 +78,4 @@ Imported files are also persisted under `~/monadic/data/library/imports/` for tr
 
 ## Use in Monadic Help :id=use-in-monadic-help
 
-The Monadic Help app uses the same Qdrant + embeddings stack but reads from the `help_docs` and `help_items` collections, which are pre-built at packaging time:
-
-1. During the Monadic Chat build, all documentation files are processed and embedded
-2. The result is shipped inside the Ruby image as a JSON dump (`help_data/help_db.json`)
-3. On first start, Monadic Chat loads the dump into Qdrant once
-4. When users ask questions, the same query/passage embedding workflow finds the relevant documentation snippets
-5. Those snippets are passed to the LLM to generate the answer
-
-Because both embedding inference and storage are local, the help system works without any provider API key.
+The Monadic Help app uses the same Qdrant + embeddings stack but reads from the `help_docs` and `help_items` collections, which are pre-built from the documentation at packaging time, shipped inside the Ruby image as a JSON dump, and loaded into Qdrant once on first start. Because both embedding inference and storage are local, help search works without any provider API key. For the build pipeline, runtime bootstrap, and configuration variables, see the [Help System](../advanced-topics/help-system.md) documentation.

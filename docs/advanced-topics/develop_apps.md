@@ -25,7 +25,7 @@ In Monadic Chat, you can develop AI chatbot applications using original system p
 
 **Tool Requirements**:
 - All tools mentioned in system prompts must have corresponding `define_tool` blocks
-- Use consistent parameter names: `fetch_text_from_file` uses `:file`, `fetch_text_from_pdf` uses `:pdf`
+- Use consistent parameter names: `fetch_text_from_file`, `fetch_text_from_pdf`, and `fetch_text_from_office` all take `:file`
 - Empty `tools do` blocks can cause "Maximum function call depth exceeded" errors
 
 ### Benefits of MDSL Format
@@ -187,50 +187,21 @@ end
 
 ### Model Specification for Custom Apps
 
-**Recommendation**: Custom apps should use environment variables for model specification to respect user preferences and ensure future compatibility.
-
-**Why Use ENV.fetch for Custom Apps:**
+**Recommendation**: Custom apps should use environment variables for model specification, so user preferences in `~/monadic/config/env` are respected and no hardcoded model names go stale:
 
 ```ruby
 llm do
   provider "openai"
-  model ENV.fetch("OPENAI_DEFAULT_MODEL")  # Recommended for custom apps
+  model ENV.fetch("OPENAI_DEFAULT_MODEL")  # Falls back to providerDefaults
 end
 ```
-
-**Benefits:**
-- ✅ **User control**: Users can customize models via `~/monadic/config/env`
-- ✅ **Automatic fallback**: Uses `providerDefaults` from `model_spec.js` when ENV variable not set
-- ✅ **Future-proof**: No hardcoded model names that become outdated
-- ✅ **Consistency**: Matches system-wide model preferences
-
-**Configuration Priority:**
-
-Model values are resolved in this order:
-1. Explicit MDSL value (if provided)
-2. Environment variable from `~/monadic/config/env`
-3. Provider defaults from `providerDefaults` in `model_spec.js` (SSOT)
-4. Hardcoded fallback
-
-**Alternative: Multiple Model Options**
-
-For apps that need specific model choices:
-
-```ruby
-llm do
-  provider "openai"
-  model ["<model-1>", "<model-2>", "<model-3>"]  # Users select from dropdown
-end
-```
-
-**Standard vs Custom Apps:**
 
 | App Type | Recommended Approach | Reason |
 |----------|---------------------|--------|
 | Standard apps (`docker/services/ruby/apps/`) | Explicit model names | Stability and predictability |
 | Custom apps (`~/monadic/data/apps/`) | `ENV.fetch()` | Flexibility and user control |
 
-For more details, see the [Model Specification Best Practices](monadic_dsl.md#model-specification-best-practices) section in the Monadic DSL documentation.
+For the full resolution order (MDSL value > ENV variable > `providerDefaults` > hardcoded fallback), multiple-model dropdowns, and the per-provider environment variable list, see [Model Specification Best Practices](monadic_dsl.md#model-specification-best-practices) in the Monadic DSL documentation.
 
 ### Ensure Session Safety
 
@@ -371,7 +342,7 @@ The following helper modules are available for use in your apps:
 
 For a complete overview of which apps are compatible with which models, see the [App Availability by Provider](../basic-usage/basic-apps.md#app-availability) section in the Basic Apps documentation.
 
-?> The "function calling" or "tool use" functions can be used in `OpenAIHelper`, `ClaudeHelper`, `CohereHelper`, `MistralHelper`, `GeminiHelper`, `GrokHelper`, and `DeepSeekHelper` (see [Calling Functions in the App](#calling-functions-in-the-app)). Function calling support varies by provider - check the specific provider's documentation for limitations.
+?> The "function calling" or "tool use" functions can be used in `OpenAIHelper`, `ClaudeHelper`, `CohereHelper`, `MistralHelper`, `GeminiHelper`, `GrokHelper`, `DeepSeekHelper`, and `OllamaHelper` (see [Calling Functions in the App](#calling-functions-in-the-app)). Function calling support varies by provider - check the specific provider's documentation for limitations.
 
 !> If the Ruby script is not valid and an error occurs, Monadic Chat will not start, and an error message will be displayed in the console. App loading errors are shown when starting the server with details about which apps failed to load and why.
 
@@ -414,10 +385,7 @@ To define Ruby methods that the AI agent can use:
 -   Use it to store and retrieve conversation-specific, non-persistent state (e.g., `session[:last_image_filename] = "image.png"`).
 -   The system ensures `session` data is isolated for each user and conversation.
 
-The tool definition format varies slightly among providers:
-- All providers: Support up to 20 function calls
-- Code execution: All providers use `run_code` for code execution
-- Array parameters: OpenAI requires `items` property
+The tool definition format and per-turn function-call limits vary slightly among providers — see [Provider-Specific Considerations](monadic_dsl.md#provider-specific-considerations) in the Monadic DSL reference.
 
 ### Execute Commands or Shell Scripts
 
@@ -431,7 +399,7 @@ send_command(command: "ls",container: "python", success_with_output: "Linux `ls`
 
 As an example, the above command executes the `ls` command in the `python` container and displays the message "Linux ls command executed successfully" when the command is executed successfully. If the `success` argument is omitted, the message "Command has been executed" is displayed, and if the `success_with_output` argument is omitted, the message "Command has been executed with the following output: " is displayed.
 
-?> It is possible to set up a recipe file so that the AI agent can use the `send_command` method directly. However, it is recommended to create a wrapper method in the recipe file and call the `send_command` method from there, implementing necessary error handling procedures. The `MonadicApp` class provides a wrapper method called `run_command` that works similarly to `send_command` but returns a specific message if any arguments are missing. It is recommended to use `run_command` instead of `send_command` directly in your recipe files.
+?> It is possible to set up a recipe file so that the AI agent can use the `send_command` method directly. However, it is recommended to define a wrapper (facade) method in the tools file and call `send_command` from there, validating the arguments and handling errors before invoking it. This way the AI agent receives a clear error message instead of a container-level failure when an argument is missing.
 
 
 ### Execute Program Code
@@ -498,59 +466,13 @@ class MyAppOpenAI < MonadicApp
 end
 ```
 
-## MCP Adapter Development
+## MCP Integration
 
-?> **Experimental Feature**: MCP (Model Context Protocol) support is an experimental feature and may change in future releases.
+Monadic Chat ships an MCP (Model Context Protocol) server called Monadic
+Conduit. It publishes a fixed set of capability tools in the `monadic_*`
+namespace (query, knowledge base, media analysis/generation, and so on) rather
+than re-exposing each app's individual tools, so there is nothing MCP-specific
+to develop or register when you create an app.
 
-Monadic Chat includes an experimental MCP server that allows external AI assistants to access Monadic Chat functionality through a standardized protocol.
-
-### MCP Adapter Structure
-
-MCP adapters are located in `docker/services/ruby/lib/monadic/mcp/adapters/` and must implement three core methods:
-
-```ruby
-# example_adapter.rb
-module Monadic
-  module MCP
-    module Adapters
-      class ExampleAdapter
-        def list_tools
-          # Return an array of tool definitions
-        end
-
-        def handles_tool?(tool_name)
-          # Return true if this adapter handles the tool
-        end
-
-        def execute_tool(tool_name, arguments)
-          # Execute the tool and return the result
-        end
-      end
-    end
-  end
-end
-```
-
-### Available Adapters
-
-| Adapter | Purpose | Tools | Output |
-|---------|---------|-------|--------|
-| **Help** | Documentation search | 3 tools | Text responses |
-| **Mermaid** | Diagram validation & generation | 4 tools | PNG images |
-| **Syntax Tree** | Tree notation & visualization | 5 tools | SVG images |
-
-### Configuration
-
-Enable the MCP server in `~/monadic/config/env`:
-
-```bash
-MCP_SERVER_ENABLED=true
-MCP_SERVER_PORT=3100
-```
-
-### Security Considerations
-
-- **Localhost binding**: MCP server accepts local connections only
-- **Input validation**: All adapters implement length and character validation
-- **Error sanitization**: Stack traces are hidden in production
-- **Container isolation**: Image generation uses isolated Docker containers
+See [MCP Integration](/advanced-topics/mcp-integration.md) for server setup,
+the available tools, and client configuration.
